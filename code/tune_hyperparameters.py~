@@ -1,0 +1,97 @@
+import pandas as pd
+import numpy as np
+from scipy import stats
+from sklearn.linear_model import LogisticRegression
+import matplotlib.pyplot as plt
+from scipy.spatial import distance
+import pickle
+import os
+from sklearn.model_selection import GridSearchCV
+settings = ["Wus_full_2", "../../epa_sider_cancer/ukbXcid_Y.txt"]
+settings = ["Wus_full_ind_noSE", "Y_full_remove_ind_se.txt"]
+settings = ["Wus_ind2", "../../epa_sider_cancer/all_disease_indication_151x413.txt"]
+settings = ["Wus_full_se_match_ind", "Yse_match_indications.txt"]
+settings = ["Wus_ind3", "../../epa_sider_cancer/all_disease_indication_151x413.txt",.8,.9]
+
+
+fw = settings[0]
+
+P = pd.read_csv("../../epa_sider_cancer/multixcan_res_10027.txt", sep = '\t', index_col = 0)
+Y = pd.read_csv(settings[1], sep="\t",  index_col=0)
+
+D = pd.read_csv("../../epa_sider_cancer/epa.txt", sep='\t',index_col=0)  
+US = np.loadtxt("../../Analysis/UxS_(428,lambda = 0.3393222).txt")
+US = pd.DataFrame(US, index = D.columns)
+U = np.loadtxt("../../Analysis/U_(428,lambda = 0.3393222).txt")
+sq = np.matmul( np.linalg.pinv(U), US.values)
+#S = pd.Series(np.diag(sq))
+frac_US = (np.diag(sq)/np.diag(sq).sum()).cumsum()
+#frac_US = (sq/sq.sum()).cumsum()
+
+del D
+druglist = set(US.index) & set(Y.columns)
+dislist = set(P.columns) & set(Y.index)
+US = US.loc[druglist,:]
+P = P.loc[:,dislist]
+Yalign2 = Y.transpose().loc[druglist,dislist] #P.columns]
+Yalign = Yalign2.values.flatten("F")
+B = P.values.T
+B = B.T
+UB, SB, VB = np.linalg.svd(B)
+VB = VB.T
+frac_P = (SB/SB.sum()).cumsum()
+# Initiliaze Leave One Out CV
+'''
+Yp = pd.read_csv("Ypred_leaveout_multix.txt",sep="\t",index_col=0)
+#Yp = pd.DataFrame(index=Yalign.index, columns=​Yalign.columns)
+from sklearn.model_selection import KFold
+kf = KFold(n_splits=20)
+
+for train_ix, test_ix in kf.split(US):
+    if pd.isnull(Yp.iloc[test_ix,:]).sum().sum() == 0:
+        print("skipping ",test_ix[0])
+        continue
+    #     Split into train and test and compute the Kroneckor Product of (P, U)
+n    US_train, US_test = US.iloc[train_ix, :], US.iloc[test_ix, :]
+'''
+hyperparam_grid = {"C": [1]}
+lr = LogisticRegression(class_weight='balanced', penalty = 'l1',
+                             random_state=42, max_iter=5000, solver = 'liblinear')
+
+n_split = 10
+crossval_to_tile = np.tile(np.arange(n_split),int(US.shape[0]/n_split)+1)[:US.shape[0]]
+full_splits = np.tile(crossval_to_tile, VB.shape[0])
+splits = [[np.where(full_splits!=i)[0], np.where(full_splits==i)[0]] 
+          for i in range(n_split)]
+
+
+grid = GridSearchCV(lr,hyperparam_grid,
+                    scoring='f1',
+                    cv=splits, 
+                    refit=True,
+                   verbose=10)
+import pickle
+for us_val in [.8,.9, 1]:
+    for p_val in [.8,.9,1]:
+        xvsave = fw + "-US=" + str(us_val) + "-P=" + str(p_val) + "_cv.pkl"
+        if os.path.exists(xvsave):
+            continue
+        us_sel = frac_US >= us_val
+        if sum(us_sel > 0):
+            us_sel = np.where(us_sel)[0][0]
+        else:
+            us_sel = US.shape[1]
+        vb_sel = frac_P >= p_val
+        if sum(vb_sel > 0):
+            vb_sel = np.where(vb_sel)[0][0]
+        else:
+            vb_sel = VB.shape[1]        
+        L = np.kron(VB[:,:vb_sel], US.iloc[:,:us_sel])
+
+        grid.fit(L,Yalign)
+        print("US:", us_val, us_sel)
+        print("VB:", p_val, vb_sel)        
+        with open(xvsave,'wb') as f:
+            pickle.dump(grid.cv_results_, f)
+
+

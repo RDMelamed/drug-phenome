@@ -1,0 +1,47 @@
+
+def setup(pfile, yfile, dfile, usfile, ufile):
+    P = pd.read_csv(pfile, sep = '\t', index_col = 0)
+    Y = pd.read_csv(yfile, sep="\t",  index_col=0)
+
+    D = pd.read_csv(dfile, sep='\t',index_col=0)
+    print('usfile is ',usfile)
+    US = np.loadtxt(usfile)
+    #pdb.set_trace()
+    US = pd.DataFrame(US, index = D.columns)
+    U = np.loadtxt(ufile)
+    sq = np.matmul( np.linalg.pinv(U), US.values)
+    #S = pd.Series(np.diag(sq))
+    frac_US = (np.diag(sq)/np.diag(sq).sum()).cumsum()
+    #frac_US = (sq/sq.sum()).cumsum()
+
+    del D
+    druglist = set(US.index) & set(Y.columns)
+    dislist = set(P.columns) & set(Y.index)
+    US = US.loc[druglist,:]
+    P = P.loc[:,dislist]
+    Yalign2 = Y.transpose().loc[druglist,dislist] #P.columns]
+    if test:
+        Yalign2 = Yalign2.iloc[:test_ndrug, :test_nphe]
+    Yalign = Yalign2.values.flatten("F")
+    B = P.values.T
+    B = B.T
+    UB, SB, VB = np.linalg.svd(B)
+    VB = VB.T
+    frac_P = (SB/SB.sum()).cumsum()
+    # Initiliaze Leave One Out CV
+    
+
+    def make_L(us_val, p_val):
+        us_sel = frac_US >= us_val
+        if sum(us_sel > 0):
+            us_sel = np.where(us_sel)[0][0]
+        else:
+            us_sel = US.shape[1]
+        vb_sel = frac_P >= p_val
+        if sum(vb_sel > 0):
+            vb_sel = np.where(vb_sel)[0][0]
+        else:
+            vb_sel = VB.shape[1]        
+        L = np.kron(VB[:,:vb_sel], US.iloc[:,:us_sel]) if not test else np.kron(VB[:test_nphe,:vb_sel], US.iloc[:test_ndrug,:us_sel])
+        return L, VB[:,:vb_sel], US.iloc[:,:us_sel]
+    return P, Yalign, D, US, U, UB VB, make_L
