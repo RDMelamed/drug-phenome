@@ -107,7 +107,7 @@ if __name__=="__main__":
         cv = pickle.load(open(cvf,'rb'))
         name = "-".join(os.path.basename(cvf).split("-")[1:]).split("_")[0]
         #testres[name] = [cv['split' + str(i) +'_test_score'][0] for i in range(10)]
-        testres[name] = cv['mean_train_score'] ###[cv['split' + str(i) +'_train_score'][0] for i in range(10)]
+        testres[name] = cv['mean_test_score'] ###[cv['split' + str(i) +'_train_score'][0] for i in range(10)]
         params = cv['param_C'].data
     testres = pd.DataFrame(testres, index=params).transpose() #.median(axis=0).sort_values()
     C = testres.mean(axis=0).idxmax()
