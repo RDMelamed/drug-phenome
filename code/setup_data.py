@@ -21,8 +21,8 @@ def setup(pfile, yfile, dfile, usfile, ufile, test):
     #frac_US = (sq/sq.sum()).cumsum()
 
     del D
-    druglist = set(US.index) & set(Y.columns)
-    dislist = set(P.columns) & set(Y.index)
+    druglist = sorted(set(US.index) & set(Y.columns)) ## so they will not be in random order
+    dislist = sorted(set(P.columns) & set(Y.index))
     US = US.loc[druglist,:]
     P = P.loc[:,dislist]
     
@@ -31,9 +31,11 @@ def setup(pfile, yfile, dfile, usfile, ufile, test):
     UB, SB, VB = np.linalg.svd(B)
     VB = VB.T
     frac_P = (SB/SB.sum()).cumsum()
-    
+    print(frac_P[:10], (frac_P >= 1).sum())
+    import pdb
+    #pdb.set_trace()    
     Yalign2 = Y.transpose().loc[druglist,dislist] #P.columns]
-    
+
     if test:
         Yalign2 = Yalign2.iloc[:test_ndrug, :test_nphe]
         US = US.iloc[:test_ndrug,:]
@@ -42,7 +44,7 @@ def setup(pfile, yfile, dfile, usfile, ufile, test):
     # Initiliaze Leave One Out CV
     
 
-    def make_L(us_val, p_val, index=[]):
+    def make_L(us_val, p_val, index=[], do_kron=True):
         us_sel = frac_US >= us_val
         if sum(us_sel > 0):
             us_sel = np.where(us_sel)[0][0]
@@ -55,8 +57,10 @@ def setup(pfile, yfile, dfile, usfile, ufile, test):
             vb_sel = VB.shape[1]
         US_use = US
         if len(index) > 0:
+            #print("using just",len(index))
             US_use = US_use.iloc[index,:]
-        L = np.kron(VB[:,:vb_sel],
+        print('vb', VB.shape,'us', US.shape)
+        L = 0 if not do_kron else np.kron(VB[:,:vb_sel],
                     US_use.iloc[:,:us_sel]) # if not test else np.kron(VB[:test_nphe,:vb_sel], US_use.iloc[:test_ndrug,:us_sel])
         return L, VB[:,:vb_sel], US_use.iloc[:,:us_sel], SB[:vb_sel]
     return P, Yalign2, Yalign, US, U, UB, SB, VB, make_L
